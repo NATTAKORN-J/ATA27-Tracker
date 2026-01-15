@@ -18,7 +18,7 @@ if st.sidebar.button("🔄 กดปุ่มนี้ถ้าข้อมู�
     st.cache_data.clear()
     st.rerun()
 
-# --- 1. Master Data (ข้อมูลประวัติ) ---
+# --- 1. Master Data ---
 def get_master_data():
     data = [
         {"Date": "2025-01-01", "Aircraft": "HS-PGY", "Position": "SEC 2", "SN_In": "SEC ...068", "Note": "Original"},
@@ -44,7 +44,7 @@ def get_master_data():
         {"Date": "2025-11-12", "Aircraft": "HS-PPC", "Position": "ELAC 1", "SN_In": "ELAC ...010495", "Note": "Current Active"},
     ]
     df = pd.DataFrame(data)
-    # 🔥 แปลงวันที่ของ Master Data ทันที (Format นี้เป็น YYYY-MM-DD แน่นอน)
+    # Master Data เป็น YYYY-MM-DD แน่นอน
     df['Date'] = pd.to_datetime(df['Date'])
     return df
 
@@ -53,7 +53,7 @@ def get_master_data():
 def load_and_process_data():
     status_msg = []
     
-    # 2.1 Master Data (แปลงวันที่มาเรียบร้อยแล้วจากฟังก์ชันข้างบน)
+    # 2.1 Master Data
     df_master = get_master_data()
     status_msg.append(f"✅ Master Data loaded: {len(df_master)} rows")
     
@@ -62,41 +62,39 @@ def load_and_process_data():
     try:
         df_sheet = pd.read_csv(SHEET_URL)
         
-        # เลือก Column ด้วย Index (1-5) เพื่อความชัวร์
+        # เลือก Column Index 1-5 (ข้าม Timestamp)
         if len(df_sheet.columns) >= 6:
             df_sheet = df_sheet.iloc[:, 1:6]
             df_sheet.columns = ['Date', 'Aircraft', 'Position', 'SN_In', 'Note']
             
-            # 🧹 CLEANING
+            # Cleaning
             df_sheet['Position'] = df_sheet['Position'].astype(str).str.upper().str.strip().str.replace('#', ' ', regex=False)
             df_sheet['Aircraft'] = df_sheet['Aircraft'].astype(str).str.upper().str.strip().str.replace('“', '', regex=False).str.replace('"', '', regex=False)
             
-            # 🔥 แปลงวันที่ของ Google Sheet แยกต่างหาก (ระบุ dayfirst=True)
-            # errors='coerce' จะเปลี่ยนวันที่ที่อ่านไม่ออกเป็น NaT (ค่าว่าง)
+            # แปลงวันที่ Google Sheet (Day First)
             df_sheet['Date'] = pd.to_datetime(df_sheet['Date'], dayfirst=True, errors='coerce')
             
-            # เช็คว่ามีแถวไหนวันที่เสียไหม
             valid_rows = df_sheet.dropna(subset=['Date'])
             dropped_count = len(df_sheet) - len(valid_rows)
             
             if dropped_count > 0:
-                status_msg.append(f"⚠️ Warning: {dropped_count} rows from Google Sheet dropped (Invalid Date).")
+                status_msg.append(f"⚠️ Warning: {dropped_count} rows dropped (Invalid Date).")
             
             df_sheet = valid_rows
-            status_msg.append(f"✅ Google Sheet connected: {len(df_sheet)} valid rows")
-            
+            status_msg.append(f"✅ Google Sheet connected: {len(df_sheet)} rows")
         else:
-            status_msg.append("⚠️ Google Sheet connected but columns mismatch.")
+            status_msg.append("⚠️ Google Sheet columns mismatch.")
             
     except Exception as e:
         status_msg.append(f"❌ Google Sheet Error: {str(e)}")
 
-    # 2.3 Concat (ตอนนี้ทั้งคู่เป็น datetime object แล้ว รวมกันได้เลย ไม่ตีกัน)
+    # 2.3 Concat
     df = pd.concat([df_master, df_sheet], ignore_index=True)
     
     # 2.4 Sort & Finish Date
     df = df.sort_values(by=['Aircraft', 'Position', 'Date']).reset_index(drop=True)
     df['Finish'] = df.groupby(['Aircraft', 'Position'])['Date'].shift(-1)
+    # ใช้วันปัจจุบันเป็นวันจบของตัวล่าสุด
     df['Finish'] = df['Finish'].fillna(pd.Timestamp.now())
     
     return df, status_msg
@@ -104,11 +102,9 @@ def load_and_process_data():
 # --- 3. Display ---
 st.title("✈️ Fleet Maintenance Tracker")
 
-# โหลดข้อมูล
 df, status_log = load_and_process_data()
 
-# แสดงสถานะระบบ
-with st.expander("ℹ️ System Status (คลิกเพื่อดูสถานะการเชื่อมต่อ)"):
+with st.expander("ℹ️ System Status"):
     for msg in status_log:
         if "❌" in msg: st.error(msg)
         elif "⚠️" in msg: st.warning(msg)
@@ -121,10 +117,8 @@ with col2:
     st.link_button("📝 + กรอกข้อมูล (Google Form)", FORM_URL)
 
 try:
-    # สร้าง Tabs
     tab1, tab2 = st.tabs(["✈️ Aircraft View", "📦 Component View"])
 
-    # --- TAB 1 ---
     with tab1:
         st.subheader("Aircraft Configuration Timeline")
         if not df.empty:
@@ -137,10 +131,7 @@ try:
             fig1.update_traces(textposition='inside', insidetextanchor='middle')
             fig1.update_layout(height=800, xaxis_title="Timeline", showlegend=True)
             st.plotly_chart(fig1, use_container_width=True)
-        else:
-            st.warning("No data available to plot.")
 
-    # --- TAB 2 ---
     with tab2:
         st.subheader("Part Journey (Tracking by Serial Number)")
         if not df.empty:
@@ -155,11 +146,16 @@ try:
             fig2.update_layout(height=800, xaxis_title="Timeline", showlegend=True)
             st.plotly_chart(fig2, use_container_width=True)
     
+    # 🔥 [ส่วนที่แก้ไข] ตารางข้อมูล (ตัดเวลาทิ้ง)
     with st.expander("ดูข้อมูลตาราง (Data Logs)"):
-        # แปลงวันที่กลับเป็น String สวยๆ ตอนโชว์ในตาราง
         df_show = df.copy()
+        # แปลงเป็น String แบบ วัน/เดือน/ปี
         df_show['Date'] = df_show['Date'].dt.strftime('%d/%m/%Y')
-        st.dataframe(df_show.sort_values(by=['Date'], ascending=False), use_container_width=True)
+        df_show['Finish'] = df_show['Finish'].dt.strftime('%d/%m/%Y')
+        
+        # เลือกคอลัมน์ที่จะโชว์
+        cols = ['Date', 'Finish', 'Aircraft', 'Position', 'SN_In', 'Note']
+        st.dataframe(df_show[cols].sort_values(by='Date', ascending=False), use_container_width=True)
 
 except Exception as e:
     st.error(f"เกิดข้อผิดพลาด: {e}")
