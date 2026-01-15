@@ -7,10 +7,10 @@ from datetime import datetime
 st.set_page_config(page_title="Bangkok Airways Component Tracker", layout="wide")
 
 # 🔴 1. ใส่ลิงก์ CSV จาก Google Sheet (ที่ Publish to web แล้ว)
-SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTz1rldEVq2bUlZT6RHwQzmUDCOLEaHFfyyposVcZosoLMnowgJZWRMOb8_eIXZFzVu3YlZvzdiaJ0Z/pub?output=csv" 
+SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTz1rldEVq2bUlZT6RHwQzmUDCOLEaHFfyyposVcZosoLMnowgJZWRMOb8_eIXZFzVu3YlZvzdiaJ0Z/pub?gid=529676428&single=true&output=csv" 
 
 # 🔴 2. ใส่ลิงก์หน้ากรอก Google Form
-FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSejfUq-SOuq82f0Mz0gtTZn2KYk0jR7w3LKrLaceOCB2MfRNw/viewform?usp=publish-editor"
+FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSejfUq-SOuq82f0Mz0gtTZn2KYk0jR7w3LKrLaceOCB2MfRNw/viewform"
 
 # --- ฟังก์ชัน: ข้อมูลประวัติ (Master Data) ---
 def get_master_data():
