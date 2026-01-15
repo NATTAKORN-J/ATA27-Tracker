@@ -50,15 +50,21 @@ def load_and_process_data():
     try:
         df_sheet = pd.read_csv(SHEET_URL)
         
-        # เปลี่ยนชื่อคอลัมน์
-        df_sheet = df_sheet.rename(columns={
-            'Timestamp': 'Date', 'ประทับเวลา': 'Date',
-            'Aircraft': 'Aircraft', 'Position': 'Position',
-            'SN_In': 'SN_In', 'Note': 'Note'
-        })
+        # 🔥 [FIXED] ไม่เปลี่ยนชื่อ 'ประทับเวลา' เป็น Date แล้ว (โยนทิ้งไปเลย)
+        # เราจะใช้คอลัมน์ที่ชื่อ "Date" (ที่มีอยู่แล้วใน Sheet ของคุณ) โดยตรง
         
-        # ลบคอลัมน์ซ้ำ
-        df_sheet = df_sheet.loc[:, ~df_sheet.columns.duplicated()]
+        # ลบคอลัมน์ที่ไม่จำเป็น (ประทับเวลา) ออกไป เพื่อไม่ให้สับสน
+        cols_to_drop = ['Timestamp', 'ประทับเวลา']
+        df_sheet = df_sheet.drop(columns=[c for c in cols_to_drop if c in df_sheet.columns], errors='ignore')
+        
+        # เปลี่ยนชื่อคอลัมน์อื่นๆ (เผื่อไว้) แต่ Date ไม่ต้องเปลี่ยนเพราะชื่อตรงอยู่แล้ว
+        df_sheet = df_sheet.rename(columns={
+            # 'Date': 'Date', <-- ไม่ต้องเปลี่ยน เพราะมันชื่อ Date อยู่แล้ว
+            'Aircraft': 'Aircraft', 
+            'Position': 'Position', 
+            'SN_In': 'SN_In', 
+            'Note': 'Note'
+        })
         
         # จัดการคอลัมน์ให้ครบ
         required_cols = ['Date', 'Aircraft', 'Position', 'SN_In', 'Note']
@@ -67,37 +73,29 @@ def load_and_process_data():
                 df_sheet[col] = None
         df_sheet = df_sheet[required_cols]
 
-        # 🧹 CLEANING DATA (เพิ่มส่วนนี้เพื่อแก้ปัญหาของคุณ)
-        # 1. เปลี่ยนตัวพิมพ์ให้เป็นพิมพ์ใหญ่ทั้งหมด (sec -> SEC)
-        df_sheet['Position'] = df_sheet['Position'].astype(str).str.upper()
-        df_sheet['Aircraft'] = df_sheet['Aircraft'].astype(str).str.upper()
+        # 🧹 CLEANING DATA
+        df_sheet['Position'] = df_sheet['Position'].astype(str).str.upper().str.strip()
+        df_sheet['Aircraft'] = df_sheet['Aircraft'].astype(str).str.upper().str.strip()
         
-        # 2. แก้เครื่องหมาย # ให้เป็นช่องว่าง (SEC#3 -> SEC 3)
+        # แก้เครื่องหมาย # และฟันหนู
         df_sheet['Position'] = df_sheet['Position'].str.replace('#', ' ', regex=False)
-        
-        # 3. ลบอักขระแปลกปลอม (เช่น “HS-PGX -> HS-PGX)
         df_sheet['Aircraft'] = df_sheet['Aircraft'].str.replace('“', '', regex=False).str.replace('"', '', regex=False)
-        
-        # 4. ลบช่องว่างหัวท้าย (Trim spaces)
-        df_sheet['Aircraft'] = df_sheet['Aircraft'].str.strip()
-        df_sheet['Position'] = df_sheet['Position'].str.strip()
         
     except Exception as e:
         st.warning(f"Google Sheet Warning: {e}")
 
     # รวมร่าง
     df = pd.concat([df_master, df_sheet], ignore_index=True)
-    df = df.loc[:, ~df.columns.duplicated()]
-
-    # จัดการวันที่
+    
+    # จัดการวันที่ (รองรับทั้งแบบ 30/6/2025 และ 2025-06-30)
     df['Date'] = pd.to_datetime(df['Date'], dayfirst=True, errors='coerce')
     df = df.dropna(subset=['Date'])
     
-    # เรียงลำดับ
+    # เรียงลำดับและรีเซ็ต index
     df = df.sort_values(by=['Aircraft', 'Position', 'Date'])
     df = df.reset_index(drop=True)
 
-    # คำนวณวันจบ (Finish Date)
+    # คำนวณวันจบ
     df['Finish'] = df.groupby(['Aircraft', 'Position'])['Date'].shift(-1)
     df['Finish'] = df['Finish'].fillna(pd.Timestamp.now())
     
@@ -140,7 +138,6 @@ try:
     # --- TAB 2 ---
     with tab2:
         st.subheader("Part Journey (Tracking by Serial Number)")
-        # กรองข้อมูล
         df_comp = df[~df['SN_In'].isin(['Unknown', 'Check', None, 'nan'])].copy()
         df_comp = df_comp.sort_values(by=['SN_In', 'Date'])
         
