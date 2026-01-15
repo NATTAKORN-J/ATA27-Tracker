@@ -6,10 +6,10 @@ import plotly.express as px
 st.set_page_config(page_title="Bangkok Airways Component Tracker", layout="wide")
 
 # 🔴 ใส่ลิงก์ CSV จาก Google Sheet ตรงนี้
-SHEET_URL = "วางลิงก์_CSV_ยาวๆ_ของคุณตรงนี้" 
+SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTz1rldEVq2bUlZT6RHwQzmUDCOLEaHFfyyposVcZosoLMnowgJZWRMOb8_eIXZFzVu3YlZvzdiaJ0Z/pub?gid=529676428&single=true&output=csv" 
 
 # 🔴 ใส่ลิงก์หน้ากรอก Google Form ตรงนี้ (เพื่อให้กดปุ่มไปกรอกได้เลย)
-FORM_URL = "วางลิงก์_Google_Form_ตรงนี้"
+FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSejfUq-SOuq82f0Mz0gtTZn2KYk0jR7w3LKrLaceOCB2MfRNw/viewform?usp=publish-editor"
 
 # --- 1. ข้อมูลประวัติ (Master Data) ที่เราคุยกัน ---
 def get_master_data():
@@ -131,3 +131,4 @@ try:
 
 except Exception as e:
     st.error(f"Error: {e}")
+
