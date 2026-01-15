@@ -143,3 +143,4 @@ elif menu == "Database (View All)":
     if st.button("Save Changes to Database"):
         edited_df.to_csv(FILE_PATH, index=False)
         st.success("Database updated successfully!")
+
