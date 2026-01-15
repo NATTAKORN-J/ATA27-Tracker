@@ -13,7 +13,7 @@ SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTz1rldEVq2bUlZT6RH
 FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSejfUq-SOuq82f0Mz0gtTZn2KYk0jR7w3LKrLaceOCB2MfRNw/viewform"
 # ==========================================
 
-# ปุ่มล้าง Cache (เผื่อข้อมูลค้าง)
+# ปุ่มล้าง Cache
 if st.sidebar.button("🔄 กดปุ่มนี้ถ้าข้อมูลไม่ไม่อัปเดต (Clear Cache)"):
     st.cache_data.clear()
     st.rerun()
@@ -43,14 +43,17 @@ def get_master_data():
         {"Date": "2025-10-29", "Aircraft": "HS-PPC", "Position": "ELAC 1", "SN_In": "ELAC ...10729", "Note": "Failed Accel"},
         {"Date": "2025-11-12", "Aircraft": "HS-PPC", "Position": "ELAC 1", "SN_In": "ELAC ...010495", "Note": "Current Active"},
     ]
-    return pd.DataFrame(data)
+    df = pd.DataFrame(data)
+    # 🔥 แปลงวันที่ของ Master Data ทันที (Format นี้เป็น YYYY-MM-DD แน่นอน)
+    df['Date'] = pd.to_datetime(df['Date'])
+    return df
 
 # --- 2. Load & Process ---
 @st.cache_data(ttl=10)
 def load_and_process_data():
     status_msg = []
     
-    # 2.1 Master Data
+    # 2.1 Master Data (แปลงวันที่มาเรียบร้อยแล้วจากฟังก์ชันข้างบน)
     df_master = get_master_data()
     status_msg.append(f"✅ Master Data loaded: {len(df_master)} rows")
     
@@ -68,27 +71,28 @@ def load_and_process_data():
             df_sheet['Position'] = df_sheet['Position'].astype(str).str.upper().str.strip().str.replace('#', ' ', regex=False)
             df_sheet['Aircraft'] = df_sheet['Aircraft'].astype(str).str.upper().str.strip().str.replace('“', '', regex=False).str.replace('"', '', regex=False)
             
-            status_msg.append(f"✅ Google Sheet connected: Found {len(df_sheet)} rows")
+            # 🔥 แปลงวันที่ของ Google Sheet แยกต่างหาก (ระบุ dayfirst=True)
+            # errors='coerce' จะเปลี่ยนวันที่ที่อ่านไม่ออกเป็น NaT (ค่าว่าง)
+            df_sheet['Date'] = pd.to_datetime(df_sheet['Date'], dayfirst=True, errors='coerce')
+            
+            # เช็คว่ามีแถวไหนวันที่เสียไหม
+            valid_rows = df_sheet.dropna(subset=['Date'])
+            dropped_count = len(df_sheet) - len(valid_rows)
+            
+            if dropped_count > 0:
+                status_msg.append(f"⚠️ Warning: {dropped_count} rows from Google Sheet dropped (Invalid Date).")
+            
+            df_sheet = valid_rows
+            status_msg.append(f"✅ Google Sheet connected: {len(df_sheet)} valid rows")
+            
         else:
             status_msg.append("⚠️ Google Sheet connected but columns mismatch.")
             
     except Exception as e:
         status_msg.append(f"❌ Google Sheet Error: {str(e)}")
 
-    # 2.3 Concat
+    # 2.3 Concat (ตอนนี้ทั้งคู่เป็น datetime object แล้ว รวมกันได้เลย ไม่ตีกัน)
     df = pd.concat([df_master, df_sheet], ignore_index=True)
-    
-    # 🔥 [FIX DATE PARSING] แปลงวันที่แบบยืดหยุ่นสุดๆ
-    # พยายามแปลงแบบ Day First (30/06/2025) ก่อน
-    df['Date'] = pd.to_datetime(df['Date'], dayfirst=True, errors='coerce')
-    
-    # เช็คว่ามีแถวไหนหายไปไหม
-    rows_before = len(df)
-    df = df.dropna(subset=['Date'])
-    rows_after = len(df)
-    
-    if rows_before > rows_after:
-        status_msg.append(f"⚠️ Warning: {rows_before - rows_after} rows dropped due to invalid date format.")
     
     # 2.4 Sort & Finish Date
     df = df.sort_values(by=['Aircraft', 'Position', 'Date']).reset_index(drop=True)
@@ -103,13 +107,12 @@ st.title("✈️ Fleet Maintenance Tracker")
 # โหลดข้อมูล
 df, status_log = load_and_process_data()
 
-# แสดงสถานะระบบ (Debug Box)
+# แสดงสถานะระบบ
 with st.expander("ℹ️ System Status (คลิกเพื่อดูสถานะการเชื่อมต่อ)"):
     for msg in status_log:
         if "❌" in msg: st.error(msg)
         elif "⚠️" in msg: st.warning(msg)
         else: st.success(msg)
-    st.caption("ถ้า Google Sheet Connected แต่กราฟไม่ขึ้น ให้ลองกดปุ่ม Clear Cache ใน Sidebar ซ้ายมือ")
 
 col1, col2 = st.columns([3, 1])
 with col1:
@@ -153,7 +156,10 @@ try:
             st.plotly_chart(fig2, use_container_width=True)
     
     with st.expander("ดูข้อมูลตาราง (Data Logs)"):
-        st.dataframe(df.sort_values(by=['Date'], ascending=False), use_container_width=True)
+        # แปลงวันที่กลับเป็น String สวยๆ ตอนโชว์ในตาราง
+        df_show = df.copy()
+        df_show['Date'] = df_show['Date'].dt.strftime('%d/%m/%Y')
+        st.dataframe(df_show.sort_values(by=['Date'], ascending=False), use_container_width=True)
 
 except Exception as e:
     st.error(f"เกิดข้อผิดพลาด: {e}")
