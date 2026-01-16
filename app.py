@@ -2,21 +2,15 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import streamlit.components.v1 as components
+import re # เพิ่มตัวช่วยตัดคำ
 from datetime import datetime
 
 # --- 1. ตั้งค่าหน้าเว็บ ---
 st.set_page_config(page_title="Bangkok Airways Component Tracker", layout="wide")
 
-# ==========================================
-# 🔴 ลิงก์ของคุณ (เหมือนเดิม)
-# ==========================================
 SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTz1rldEVq2bUlZT6RHwQzmUDCOLEaHFfyyposVcZosoLMnowgJZWRMOb8_eIXZFzVu3YlZvzdiaJ0Z/pub?gid=529676428&single=true&output=csv"
 FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSejfUq-SOuq82f0Mz0gtTZn2KYk0jR7w3LKrLaceOCB2MfRNw/viewform?embedded=true"
-# ==========================================
 
-# ==========================================
-# ✈️ ตั้งค่าฝูงบิน
-# ==========================================
 FLEET_CONFIG = {
     "Airbus A319/A320": [
         "HS-PGY", "HS-PPB", "HS-PGN", "HS-PGX", "HS-PPC", 
@@ -28,9 +22,30 @@ FLEET_CONFIG = {
     ]
 }
 
-# --- 2. Master Data (ข้อมูลเก่า - ผมใส่ Placeholder ให้ครบโครงสร้าง) ---
+# --- ฟังก์ชันตัด S/N ให้เหลือ 4 ตัวท้าย (ตามคำขอ) ---
+def clean_sn_last4(val):
+    val_str = str(val).strip()
+    
+    # ถ้าเป็นค่าว่าง หรือขีด ให้คงเดิมไว้
+    if val_str in ['-', 'nan', 'None', '', 'Unknown']:
+        return val_str
+    
+    # ถ้ามีคำว่า Shop ให้โชว์ว่า SHOP
+    if 'shop' in val_str.lower():
+        return "SHOP"
+
+    # ลองดึงเฉพาะตัวเลขออกมา
+    digits = re.findall(r'\d+', val_str)
+    if digits:
+        # เอาตัวเลขทั้งหมดมาต่อกัน แล้วตัดเอา 4 ตัวท้าย
+        full_num = "".join(digits)
+        return full_num[-4:]
+    else:
+        # ถ้าไม่มีตัวเลขเลย ให้เอา 4 ตัวอักษรท้าย
+        return val_str[-4:]
+
+# --- 2. Master Data ---
 def get_master_data():
-    # เพิ่มฟิลด์ใหม่ให้ครบ (WO, Request, Action) ข้อมูลเก่าใส่ขีดละไว้
     data = [
         {"Date": "2025-01-01", "Aircraft": "HS-PGY", "Position": "SEC 2", "SN_In": "SEC ...068", "Note": "Original", "WO": "-", "Request": "-", "Action": "Original Install"},
         {"Date": "2025-10-05", "Aircraft": "HS-PGY", "Position": "SEC 3", "SN_In": "SEC ...851", "Note": "Current Active", "WO": "WO-25-099", "Request": "SEC 3 Fault Message", "Action": "Replaced SEC 3"},
@@ -41,6 +56,10 @@ def get_master_data():
         {"Date": "2025-12-21", "Aircraft": "HS-PGX", "Position": "ELAC 1", "SN_In": "ELAC ...Check", "Note": "Start Up (Reset OK)", "WO": "-", "Request": "-", "Action": "-"},
         {"Date": "2025-06-11", "Aircraft": "HS-PPC", "Position": "FCDC 2", "SN_In": "FCDC ...8150", "Note": "Current Active", "WO": "-", "Request": "-", "Action": "-"},
         {"Date": "2025-11-12", "Aircraft": "HS-PPC", "Position": "ELAC 1", "SN_In": "ELAC ...010495", "Note": "Current Active", "WO": "-", "Request": "-", "Action": "-"},
+        # เพิ่มข้อมูลให้ครบตามที่แจ้งว่าหายไป (ตัวอย่าง)
+        {"Date": "2025-09-01", "Aircraft": "HS-PGY", "Position": "SEC 3", "SN_In": "SEC ...590", "Note": "Ident Error", "WO": "-", "Request": "-", "Action": "-"},
+        {"Date": "2025-01-01", "Aircraft": "HS-PGY", "Position": "SEC 3", "SN_In": "SEC ...756", "Note": "Original", "WO": "-", "Request": "-", "Action": "-"},
+        {"Date": "2025-09-25", "Aircraft": "HS-PGY", "Position": "SEC 3", "SN_In": "SEC ...976", "Note": "Died", "WO": "-", "Request": "-", "Action": "-"},
     ]
     df = pd.DataFrame(data)
     df['Date'] = pd.to_datetime(df['Date'])
@@ -59,54 +78,45 @@ def load_and_process_data():
     df_sheet = pd.DataFrame()
     try:
         df_sheet = pd.read_csv(SHEET_URL)
-        
-        # 🔥 LOGIC การอ่านคอลัมน์แบบใหม่ (รองรับ 9 คอลัมน์)
-        # คาดหวัง: [Timestamp, Date, Aircraft, Position, SN_In, Note, WO, Request, Action]
-        
-        # เตรียมรายชื่อคอลัมน์มาตรฐาน
         std_cols = ['Date', 'Aircraft', 'Position', 'SN_In', 'Note', 'WO', 'Request', 'Action']
         
         if len(df_sheet.columns) >= 6:
-            # 1. เอา 5 คอลัมน์หลักมาก่อน (ข้าม Timestamp ที่ Col 0)
             main_data = df_sheet.iloc[:, 1:6].copy()
             main_data.columns = ['Date', 'Aircraft', 'Position', 'SN_In', 'Note']
             
-            # 2. เช็คว่ามีคอลัมน์ WO, Request, Action เพิ่มมาหรือยัง? (Col 6, 7, 8)
             if len(df_sheet.columns) >= 9:
                 extra_data = df_sheet.iloc[:, 6:9].copy()
                 extra_data.columns = ['WO', 'Request', 'Action']
-                # รวมร่าง
                 df_sheet = pd.concat([main_data, extra_data], axis=1)
             else:
-                # ถ้ายังไม่มี ให้สร้างเป็นค่าว่างไว้ก่อน
                 df_sheet = main_data
                 df_sheet['WO'] = "-"
                 df_sheet['Request'] = "-"
                 df_sheet['Action'] = "-"
             
-            # Cleaning
+            # Cleaning Data
             df_sheet['Position'] = df_sheet['Position'].astype(str).str.upper().str.strip().str.replace('#', ' ', regex=False)
             df_sheet['Aircraft'] = df_sheet['Aircraft'].astype(str).str.upper().str.strip().str.replace('“', '', regex=False).str.replace('"', '', regex=False)
             
             # Date Parsing
             df_sheet['Date'] = pd.to_datetime(df_sheet['Date'], dayfirst=True, errors='coerce')
             valid_rows = df_sheet.dropna(subset=['Date'])
-            
-            status_msg.append(f"✅ Google Sheet connected: {len(valid_rows)} valid rows")
             df_sheet = valid_rows
-            
+            status_msg.append(f"✅ Google Sheet connected: {len(df_sheet)} rows")
         else:
-            status_msg.append("⚠️ Google Sheet format incorrect (Need at least 6 columns).")
-            
+            status_msg.append("⚠️ Google Sheet columns mismatch.")
     except Exception as e:
         status_msg.append(f"❌ Google Sheet Error: {str(e)}")
 
-    # 3.3 Concat & Finish Date
+    # 3.3 Concat
     df = pd.concat([df_master, df_sheet], ignore_index=True)
-    
-    # เติมค่าว่าง (fillna) เผื่อบางแถวไม่มีข้อมูล
     df = df.fillna("-")
     
+    # 🔥 Apply S/N Cleaning (เหลือ 4 ตัวท้าย)
+    # ทำก่อน sort จะได้เรียงลำดับถูก
+    df['SN_Show'] = df['SN_In'].apply(clean_sn_last4)
+    
+    # Sort
     df = df.sort_values(by=['Aircraft', 'Position', 'Date']).reset_index(drop=True)
     df['Finish'] = df.groupby(['Aircraft', 'Position'])['Date'].shift(-1)
     df['Finish'] = df['Finish'].fillna(pd.Timestamp.now())
@@ -128,14 +138,15 @@ st.sidebar.header("🔍 Filters")
 available_aircrafts = sorted([ac for ac in df['Aircraft'].unique() if ac in fleet_aircrafts])
 
 if not available_aircrafts:
-    st.sidebar.warning("ไม่พบเครื่องบินในฝูงนี้")
     selected_aircraft = []
 else:
     selected_aircraft = st.sidebar.multiselect(f"Select {selected_fleet_type}", options=available_aircrafts, default=available_aircrafts)
 
+# Filter for S/N list
 fleet_df = df[df['Aircraft'].isin(fleet_aircrafts)]
-all_sns = sorted(fleet_df[fleet_df['SN_In'] != "-"]['SN_In'].unique()) # กรอง - ออก
-selected_sn = st.sidebar.multiselect("Select S/N", options=all_sns, default=[])
+# เรียง S/N จากตัวที่ clean แล้ว (SN_Show) เพื่อความสวยงาม
+all_sns = sorted(fleet_df[fleet_df['SN_Show'] != "-"]['SN_Show'].unique()) 
+selected_sn = st.sidebar.multiselect("Select S/N (4-Digits)", options=all_sns, default=[])
 
 if st.sidebar.button("🔄 Reload Data"):
     st.cache_data.clear()
@@ -143,18 +154,16 @@ if st.sidebar.button("🔄 Reload Data"):
 
 # Embedded Form
 with st.expander("📝 คลิกที่นี่เพื่อกรอกข้อมูลใหม่ (WO, Request, Action)", expanded=False):
-    st.markdown("กรอกข้อมูล WO, อาการเสีย (Request), และการแก้ไข (Action) ได้ที่นี่")
     components.iframe(FORM_URL, height=600, scrolling=True)
 
-# Filter Data
+# Filter Processing
 filtered_df = df.copy()
 filtered_df = filtered_df[filtered_df['Aircraft'].isin(fleet_aircrafts)]
 if selected_aircraft:
     filtered_df = filtered_df[filtered_df['Aircraft'].isin(selected_aircraft)]
 if selected_sn:
-    filtered_df = filtered_df[filtered_df['SN_In'].isin(selected_sn)]
+    filtered_df = filtered_df[filtered_df['SN_Show'].isin(selected_sn)]
 
-# Layout
 col1, col2 = st.columns([3, 1])
 with col1:
     st.markdown(f"### 📂 {selected_fleet_type} Dashboard")
@@ -164,16 +173,17 @@ with col2:
 try:
     if not filtered_df.empty:
         tab1, tab2 = st.tabs(["✈️ Aircraft View", "📦 Component View"])
-
-        # 🔥 Hover Data: เพิ่ม WO, Request, Action เข้าไปในกราฟ
-        hover_cols = ["Aircraft", "Position", "Date", "SN_In", "WO", "Request", "Action"]
+        hover_cols = ["Aircraft", "Position", "Date", "SN_Show", "WO", "Request", "Action"]
 
         with tab1:
+            # ใช้ SN_Show (4 ตัวท้าย) เป็นสีและ label
             filtered_df['Y_Label'] = filtered_df['Aircraft'] + " [" + filtered_df['Position'] + "]"
             fig1 = px.timeline(
-                filtered_df, x_start="Date", x_end="Finish", y="Y_Label", color="SN_In",
-                text="Note", 
-                hover_data=hover_cols, # <--- เพิ่มตรงนี้
+                filtered_df, x_start="Date", x_end="Finish", y="Y_Label", 
+                color="SN_Show", # ใช้ S/N 4 ตัวท้ายเป็นตัวแบ่งสี
+                text="SN_Show",  # โชว์เลข 4 ตัวท้ายในกราฟ
+                hover_data=hover_cols,
+                title="Timeline (Color by S/N Last 4 Digits)"
             )
             fig1.update_yaxes(autorange="reversed", title="Aircraft Position")
             fig1.update_traces(textposition='inside', insidetextanchor='middle')
@@ -182,30 +192,31 @@ try:
             st.plotly_chart(fig1, use_container_width=True)
 
         with tab2:
-            df_comp = filtered_df[~filtered_df['SN_In'].isin(['Unknown', 'Check', None, 'nan', '-'])].copy()
+            # กรองเอาเฉพาะที่มีเลข S/N (รวมถึง Shop ด้วยถ้าอยากเห็น)
+            df_comp = filtered_df[~filtered_df['SN_Show'].isin(['-', 'nan', 'None', 'Unknown'])].copy()
+            
             if not df_comp.empty:
-                df_comp = df_comp.sort_values(by=['SN_In', 'Date'])
+                df_comp = df_comp.sort_values(by=['SN_Show', 'Date'])
                 fig2 = px.timeline(
-                    df_comp, x_start="Date", x_end="Finish", y="SN_In", color="Aircraft",
+                    df_comp, x_start="Date", x_end="Finish", y="SN_Show", # แกน Y เป็น S/N 4 ตัวท้าย
+                    color="Aircraft",
                     text="Position", 
-                    hover_data=hover_cols, # <--- เพิ่มตรงนี้
+                    hover_data=hover_cols,
                 )
-                fig2.update_yaxes(categoryorder='category ascending', title="S/N")
+                fig2.update_yaxes(categoryorder='category ascending', title="S/N (Last 4 Digits)")
                 fig2.update_traces(textposition='inside', insidetextanchor='middle')
                 fig_height = max(400, len(df_comp) * 40)
                 fig2.update_layout(height=fig_height, xaxis_title="Timeline")
                 st.plotly_chart(fig2, use_container_width=True)
             else:
-                st.info("ไม่พบประวัติการย้าย S/N")
+                st.info("ไม่พบประวัติ S/N")
 
-        # 🔥 Data Table: โชว์คอลัมน์ใหม่ด้วย
         with st.expander("ดูข้อมูลตารางแบบละเอียด (Detailed Logs)", expanded=True):
             df_show = filtered_df.copy()
             df_show['Date'] = df_show['Date'].dt.strftime('%d/%m/%Y')
             df_show['Finish'] = df_show['Finish'].dt.strftime('%d/%m/%Y')
-            
-            # เลือกคอลัมน์มาโชว์ให้ครบ
-            cols = ['Date', 'Aircraft', 'Position', 'WO', 'Request', 'Action', 'SN_In', 'Note']
+            # โชว์ SN_Show (4ตัว) คู่กับ SN_In (ตัวเต็ม) เผื่ออยากเช็ค
+            cols = ['Date', 'Aircraft', 'Position', 'SN_Show', 'SN_In', 'WO', 'Request', 'Action']
             st.dataframe(df_show[cols].sort_values(by='Date', ascending=False), use_container_width=True)
     else:
         st.info("ไม่พบข้อมูลตามเงื่อนไข")
