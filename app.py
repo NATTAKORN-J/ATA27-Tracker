@@ -1,22 +1,20 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import streamlit.components.v1 as components # เรียกใช้ component เพื่อฝังเว็บ
+import streamlit.components.v1 as components
 from datetime import datetime
 
 # --- ตั้งค่าหน้าเว็บ ---
 st.set_page_config(page_title="Bangkok Airways Component Tracker", layout="wide")
 
 # ==========================================
-# 🔴 ลิงก์ของคุณ
+# 🔴 ลิงก์ของคุณ (แก้ไขตรงนี้)
 # ==========================================
 SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTz1rldEVq2bUlZT6RHwQzmUDCOLEaHFfyyposVcZosoLMnowgJZWRMOb8_eIXZFzVu3YlZvzdiaJ0Z/pub?gid=529676428&single=true&output=csv"
 FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSejfUq-SOuq82f0Mz0gtTZn2KYk0jR7w3LKrLaceOCB2MfRNw/viewform?embedded=true"
-# 💡 เคล็ดลับ: เติม ?embedded=true ต่อท้ายลิงก์ฟอร์ม เพื่อตัดขอบออกให้สวยงาม
-# ==========================================
 
 # ==========================================
-# ✈️ ตั้งค่าฝูงบิน
+# ✈️ ตั้งค่าฝูงบิน (FLEET CONFIGURATION)
 # ==========================================
 FLEET_CONFIG = {
     "Airbus A319/A320": [
@@ -124,10 +122,8 @@ if st.sidebar.button("🔄 Reload Data"):
 # ==========================================
 # 📥 ส่วนกรอกข้อมูล (EMBEDDED FORM)
 # ==========================================
-# สร้างกล่องกดแล้วยืดหดได้ (Expander) เพื่อซ่อนฟอร์มไม่ให้เกะกะ
 with st.expander("📝 คลิกที่นี่เพื่อกรอกข้อมูลใหม่ (Record New Data)", expanded=False):
     st.markdown("กรอกข้อมูลในแบบฟอร์มด้านล่าง ข้อมูลจะถูกบันทึกเข้าระบบอัตโนมัติ")
-    # ฝัง Google Form ลงในเว็บ
     components.iframe(FORM_URL, height=600, scrolling=True)
 
 # ==========================================
@@ -144,8 +140,9 @@ if selected_sn:
 col1, col2 = st.columns([3, 1])
 with col1:
     st.markdown(f"### 📂 {selected_fleet_type} Dashboard")
-with col2:
     st.caption(f"Total Records: {len(filtered_df)}")
+with col2:
+    pass
 
 try:
     if not filtered_df.empty:
